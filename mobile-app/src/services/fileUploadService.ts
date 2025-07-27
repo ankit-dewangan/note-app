@@ -9,6 +9,7 @@ export interface FileMetadata {
   filename: string;
   originalName: string;
   contentType: string;
+  mimeType: string;
   size: number;
   url: string;
   uploadedBy: string;

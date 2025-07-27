@@ -267,6 +267,7 @@ export default function NoteScreen() {
           onPress: async () => {
             try {
               setIsSaving(true);
+              console.log('Deleting note:', id);
               await deleteNote(id);
               showSuccess('Note deleted successfully', 'Success');
               router.back();
@@ -410,6 +411,7 @@ export default function NoteScreen() {
 
   const removeFile = async (fileId: string) => {
     try {
+      console.log('Removing file:', fileId);
       await fileUploadService.deleteFile(fileId);
       setAttachedFiles(prev => prev.filter(file => file.id !== fileId));
       showSuccess('File removed successfully', 'Success');
@@ -425,17 +427,21 @@ export default function NoteScreen() {
 
   const viewFile = async (file: FileMetadata) => {
     try {
+      console.log('Viewing file:', file.originalName, 'Type:', file.mimeType);
+      
       // Get fresh download URL
       const fileData = await apiService.getFileMetadata(file?._id || file.id);
-      
+      console.log('File metadata received:', fileData);
+      console.log('File data:', file.mimeType);
       // Handle different file types
-      if (file.contentType && file.contentType.startsWith('image/')) {
-        // Display images inline
+      if (file.mimeType && file.mimeType.startsWith('image/')) {
+        // Display images inline with preview - no download dialog
+        console.log('Opening image preview for:', file.originalName);
         setViewingImage({
           url: fileData.downloadUrl,
           name: file.originalName
         });
-      } else if (file.contentType && file.contentType.includes('pdf')) {
+      } else if (file.mimeType && file.mimeType.includes('pdf')) {
         // For PDFs, show download option
         Alert.alert(
           'PDF Document',
@@ -448,7 +454,7 @@ export default function NoteScreen() {
             }}
           ]
         );
-      } else if (file.contentType && file.contentType.includes('video')) {
+      } else if (file.mimeType && file.mimeType.includes('video')) {
         // For videos, show download option
         Alert.alert(
           'Video File',
@@ -460,7 +466,7 @@ export default function NoteScreen() {
             }}
           ]
         );
-      } else if (file.contentType && file.contentType.includes('audio')) {
+      } else if (file.mimeType && file.mimeType.includes('audio')) {
         // For audio files, show download option
         Alert.alert(
           'Audio File',
@@ -486,6 +492,7 @@ export default function NoteScreen() {
         );
       }
     } catch (error) {
+      console.error('Error viewing file:', error);
       showError('Failed to view file', 'Error');
     }
   };
@@ -621,21 +628,21 @@ export default function NoteScreen() {
             {attachedFiles.map((file) => {
               // Determine file type and icon
               const getFileIcon = () => {
-                if (!file.contentType) return 'insert-drive-file';
+                if (!file.mimeType) return 'insert-drive-file';
                 
-                if (file.contentType.startsWith('image/')) {
+                if (file.mimeType.startsWith('image/')) {
                   return 'image';
-                } else if (file.contentType.includes('pdf')) {
+                } else if (file.mimeType.includes('pdf')) {
                   return 'picture-as-pdf';
-                } else if (file.contentType.includes('word') || file.contentType.includes('document')) {
+                } else if (file.mimeType.includes('word') || file.mimeType.includes('document')) {
                   return 'description';
-                } else if (file.contentType.includes('excel') || file.contentType.includes('spreadsheet')) {
+                } else if (file.mimeType.includes('excel') || file.mimeType.includes('spreadsheet')) {
                   return 'table-chart';
-                } else if (file.contentType.includes('text')) {
+                } else if (file.mimeType.includes('text')) {
                   return 'text-fields';
-                } else if (file.contentType.includes('video')) {
+                } else if (file.mimeType.includes('video')) {
                   return 'video-file';
-                } else if (file.contentType.includes('audio')) {
+                } else if (file.mimeType.includes('audio')) {
                   return 'audiotrack';
                 } else {
                   return 'insert-drive-file';
@@ -643,21 +650,21 @@ export default function NoteScreen() {
               };
 
               const getFileTypeText = () => {
-                if (!file.contentType) return 'Unknown File';
+                if (!file.mimeType) return 'File';
                 
-                if (file.contentType.startsWith('image/')) {
+                if (file.mimeType.startsWith('image/')) {
                   return 'Image';
-                } else if (file.contentType.includes('pdf')) {
+                } else if (file.mimeType.includes('pdf')) {
                   return 'PDF Document';
-                } else if (file.contentType.includes('word') || file.contentType.includes('document')) {
+                } else if (file.mimeType.includes('word') || file.mimeType.includes('document')) {
                   return 'Word Document';
-                } else if (file.contentType.includes('excel') || file.contentType.includes('spreadsheet')) {
+                } else if (file.mimeType.includes('excel') || file.mimeType.includes('spreadsheet')) {
                   return 'Excel Spreadsheet';
-                } else if (file.contentType.includes('text')) {
+                } else if (file.mimeType.includes('text')) {
                   return 'Text File';
-                } else if (file.contentType.includes('video')) {
+                } else if (file.mimeType.includes('video')) {
                   return 'Video File';
-                } else if (file.contentType.includes('audio')) {
+                } else if (file.mimeType.includes('audio')) {
                   return 'Audio File';
                 } else {
                   return 'Document';
@@ -680,18 +687,29 @@ export default function NoteScreen() {
                       </Text>
                     </View>
                   </View>
-                  <TouchableOpacity 
-                    style={styles.viewFileButton}
-                    onPress={() => {
-                      console.log(file)
-                     viewFile(file)
-                    }}
-                  >
-                    <MaterialIcons name="visibility" size={20} color={currentTheme.colors.primary} />
-                  </TouchableOpacity>
+                  
+                  {/* Different buttons for images vs other files */}
+                  {file.mimeType && file.mimeType.startsWith('image/') ? (
+                    // Preview button for images
+                    <TouchableOpacity 
+                      style={styles.viewFileButton}
+                      onPress={() => viewFile(file)}
+                    >
+                      <MaterialIcons name="preview" size={20} color={currentTheme.colors.primary} />
+                    </TouchableOpacity>
+                  ) : (
+                    // Download button for other files
+                    <TouchableOpacity 
+                      style={styles.viewFileButton}
+                      onPress={() => viewFile(file)}
+                    >
+                      <MaterialIcons name="download" size={20} color={currentTheme.colors.primary} />
+                    </TouchableOpacity>
+                  )}
+                  
                   <TouchableOpacity 
                     style={styles.removeFileButton}
-                    onPress={() => removeFile(file.id)}
+                    onPress={() => removeFile(file._id || file.id)}
                   >
                     <MaterialIcons name="close" size={20} color={currentTheme.colors.error} />
                   </TouchableOpacity>
@@ -716,8 +734,16 @@ export default function NoteScreen() {
 
       {/* Image Viewer Modal */}
       {viewingImage && (
-        <View style={[styles.imageViewerOverlay, { backgroundColor: currentTheme.colors.backdrop }]}>
-          <View style={[styles.imageViewerContainer, { backgroundColor: currentTheme.colors.surface }]}>
+        <TouchableOpacity 
+          style={[styles.imageViewerOverlay, { backgroundColor: currentTheme.colors.backdrop }]}
+          activeOpacity={1}
+          onPress={() => setViewingImage(null)}
+        >
+          <TouchableOpacity 
+            style={[styles.imageViewerContainer, { backgroundColor: currentTheme.colors.surface }]}
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
             <View style={styles.imageViewerHeader}>
               <Text style={[styles.imageViewerTitle, { color: currentTheme.colors.text }]}>{viewingImage.name}</Text>
               <TouchableOpacity 
@@ -727,13 +753,31 @@ export default function NoteScreen() {
                 <MaterialIcons name="close" size={24} color={currentTheme.colors.text} />
               </TouchableOpacity>
             </View>
-            <Image 
-              source={{ uri: viewingImage.url }} 
-              style={styles.imageViewerImage}
-              resizeMode="contain"
-            />
-          </View>
-        </View>
+            <ScrollView 
+              style={styles.imageViewerScrollView}
+              contentContainerStyle={styles.imageViewerScrollContent}
+              showsVerticalScrollIndicator={false}
+              showsHorizontalScrollIndicator={false}
+              maximumZoomScale={3.0}
+              minimumZoomScale={0.5}
+            >
+              <Image 
+                source={{ uri: viewingImage.url }} 
+                style={styles.imageViewerImage}
+                resizeMode="contain"
+                onError={() => {
+                  showError('Failed to load image', 'Error');
+                  setViewingImage(null);
+                }}
+              />
+            </ScrollView>
+            <View style={styles.imageViewerFooter}>
+              <Text style={[styles.imageViewerInstructions, { color: currentTheme.colors.textSecondary }]}>
+                Pinch to zoom • Tap outside to close
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       )}
 
       {/* Action Buttons (bottom) - Only Save and Cancel */}
@@ -1065,14 +1109,38 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#000000',
     flex: 1,
-    textAlign: 'center',
   },
   closeImageViewerButton: {
     padding: 8,
   },
+  imageViewerScrollView: {
+    flex: 1,
+    width: '100%',
+  },
+  imageViewerScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   imageViewerImage: {
     width: '100%',
     height: '100%',
+    minHeight: 300,
+  },
+  imageViewerFooter: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  imageViewerInstructions: {
+    fontSize: 12,
+    color: '#FFFFFF',
   },
   headerIconButton: {
     padding: 8,

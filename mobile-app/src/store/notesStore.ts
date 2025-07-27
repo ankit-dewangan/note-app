@@ -167,6 +167,7 @@ export const useNotesStore = create<NotesState & NotesActions>((set, get) => ({
   deleteNote: async (id) => {
     try {
       set({ isLoading: true, error: null });
+      console.log('Deleting note:', id);
       await apiService.deleteNote(id);
       
       set(state => ({

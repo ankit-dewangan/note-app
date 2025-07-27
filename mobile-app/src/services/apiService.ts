@@ -236,6 +236,17 @@ class ApiService {
     });
   }
 
+  async createSampleFiles(noteId: string): Promise<any[]> {
+    const response = await this.makeRequest<{ success: boolean; data: any[] }>('/files/sample', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ noteId }),
+    });
+    return response.data;
+  }
+
   // Real-time Collaboration
   async joinNote(noteId: string): Promise<void> {
     await this.makeRequest(`/notes/${noteId}/join`, {
