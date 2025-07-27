@@ -1,0 +1,32 @@
+# Node
+node_modules/
+build/
+dist/
+coverage/
+
+# Expo
+.expo/
+.expo-shared/
+web-build/
+
+# Env
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# iOS
+ios/Pods/
+ios/build/
+
+# Android
+android/.gradle/
+android/app/build/
+android/build/

@@ -1,0 +1,8 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" rx="200" fill="#007AFF"/>
+  <path d="M300 300 L724 300 L724 724 L300 724 Z" fill="white" stroke="white" stroke-width="20"/>
+  <path d="M350 350 L674 350 L674 674 L350 674 Z" fill="#007AFF"/>
+  <path d="M400 400 L624 400 L624 500 L400 500 Z" fill="white"/>
+  <path d="M400 550 L624 550 L624 600 L400 600 Z" fill="white"/>
+  <path d="M400 650 L524 650 L524 674 L400 674 Z" fill="white"/>
+</svg> 
