@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { Note } from '../models/Note';
 import { User } from '../models/User';
+import { NoteVersion } from '../models/NoteVersion';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../utils/logger';
 import { randomBytes } from 'crypto';
@@ -138,7 +139,23 @@ export const notesController = {
 
       await note.save();
 
-      logger.info(`Note created: ${note.id} by user: ${userId}`);
+      // Create initial version
+      const initialVersion = new NoteVersion({
+        noteId: note.id,
+        version: 1,
+        title,
+        content,
+        createdBy: userId,
+        changeType: 'create',
+        changeDescription: 'Note created',
+        collaborators,
+        tags,
+        color: color || '#007AFF'
+      });
+
+      await initialVersion.save();
+
+      logger.info(`Note created: ${note.id} by user: ${userId} with version 1`);
 
       res.status(201).json({
         success: true,
@@ -190,7 +207,30 @@ export const notesController = {
       Object.assign(note, updateData);
       await note.save();
 
-      logger.info(`Note updated: ${note.id} by user: ${userId}`);
+      // Create new version
+      const latestVersion = await NoteVersion.findOne({ noteId: note.id })
+        .sort({ version: -1 })
+        .select('version')
+        .lean();
+
+      const nextVersion = (latestVersion?.version || 0) + 1;
+
+      const newVersion = new NoteVersion({
+        noteId: note.id,
+        version: nextVersion,
+        title: note.title,
+        content: note.content,
+        createdBy: userId,
+        changeType: 'update',
+        changeDescription: 'Note updated',
+        collaborators: note.collaborators,
+        tags: note.tags,
+        color: note.color
+      });
+
+      await newVersion.save();
+
+      logger.info(`Note updated: ${note.id} by user: ${userId} with version ${nextVersion}`);
 
       res.json({
         success: true,

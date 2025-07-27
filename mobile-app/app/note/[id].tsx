@@ -522,6 +522,26 @@ export default function NoteScreen() {
             </Text>
           </View>
           <View style={styles.headerActions}>
+            {/* Version History button (for existing notes) */}
+            {!isNewNote && (
+              <TouchableOpacity style={styles.headerIconButton} onPress={() => router.push(`/note/${id}/history`)}>
+                <MaterialIcons name="history" size={24} color={currentTheme.colors.primary} />
+              </TouchableOpacity>
+            )}
+            {/* Sample Files button (for testing) */}
+            {!isNewNote && (
+              <TouchableOpacity style={styles.headerIconButton} onPress={async () => {
+                try {
+                  const sampleFiles = await apiService.createSampleFiles(id);
+                  showSuccess(`Created ${sampleFiles.length} sample files`);
+                  loadFiles(); // Reload files
+                } catch (error) {
+                  showError('Failed to create sample files');
+                }
+              }}>
+                <MaterialIcons name="add-photo-alternate" size={24} color={currentTheme.colors.primary} />
+              </TouchableOpacity>
+            )}
             {/* Attach icon */}
             <TouchableOpacity style={styles.headerIconButton} onPress={handleFileUpload}>
               <MaterialIcons name="attach-file" size={24} color={currentTheme.colors.primary} />

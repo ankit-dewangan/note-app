@@ -14,6 +14,7 @@ import { authenticateUser } from './middleware/auth';
 import notesRoutes from './routes/notes';
 import filesRoutes from './routes/files';
 import searchRoutes from './routes/search';
+import versionsRoutes from './routes/versions';
 import { setupSocketHandlers } from './sockets';
 import { clerkClient } from '@clerk/clerk-sdk-node';
 
@@ -40,7 +41,7 @@ const PORT = process.env.PORT || 3000;
 // Rate limiting
 const limiter = rateLimit({
   windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 100000, // limit each IP to 100 requests per windowMs
+  max: Number(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000, // limit each IP to 100 requests per windowMs
   message: {
     success: false,
     error: 'Too many requests from this IP, please try again later.',
@@ -78,6 +79,7 @@ app.get('/health', (req, res) => {
 app.use('/api/notes', authenticateUser, notesRoutes);
 app.use('/api/files', authenticateUser, filesRoutes);
 app.use('/api/search', authenticateUser, searchRoutes);
+app.use('/api/versions', authenticateUser, versionsRoutes);
 
 // Socket.io authentication middleware
 io.use(async (socket, next) => {
