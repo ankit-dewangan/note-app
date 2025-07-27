@@ -188,19 +188,19 @@ export default function HomeScreen() {
           <TouchableOpacity style={styles.headerButton} onPress={handleSearchPress}>
             <MaterialIcons name="search" size={24} color={currentTheme.colors.primary} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerButton} onPress={handleThemePress}>
+          {/* <TouchableOpacity style={styles.headerButton} onPress={handleThemePress}>
             <MaterialIcons 
               name={themeType === 'dark' ? 'light-mode' : 'dark-mode'} 
               size={24} 
               color={currentTheme.colors.primary} 
             />
-          </TouchableOpacity>
+          </TouchableOpacity> */}
           <TouchableOpacity style={styles.headerButton} onPress={handleSettingsPress}>
             <MaterialIcons name="settings" size={24} color={currentTheme.colors.primary} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerButton} onPress={handleSignOut}>
+          {/* <TouchableOpacity style={styles.headerButton} onPress={handleSignOut}>
             <MaterialIcons name="logout" size={24} color={currentTheme.colors.primary} />
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
       </View>
 
@@ -246,14 +246,6 @@ export default function HomeScreen() {
               >
                 <MaterialIcons name="add" size={20} color="#FFFFFF" />
                 <Text style={styles.emptyButtonText}>Create Note</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.emptyButton, styles.sampleButton, { backgroundColor: currentTheme.colors.secondary }]}
-                onPress={handleCreateSampleNotes}
-              >
-                <MaterialIcons name="auto-awesome" size={20} color="#FFFFFF" />
-                <Text style={styles.emptyButtonText}>Add Sample Notes</Text>
               </TouchableOpacity>
             </View>
           </View>
