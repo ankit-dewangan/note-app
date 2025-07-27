@@ -35,6 +35,9 @@ export default function VersionHistoryScreen() {
       versions.map(async (version) => {
         try {
           const decryptedContent = await decryptNoteContent(version.content);
+          
+          console.log('Decrypted version:', version.version, 'Title:', version.title.substring(0, 50), 'Content:', decryptedContent.substring(0, 50));
+          
           return {
             ...version,
             content: decryptedContent,
@@ -98,21 +101,17 @@ export default function VersionHistoryScreen() {
       const comparison = await versionService.compareVersions(id, version1.version, version2.version);
       
       // Ensure both versions are decrypted for comparison
-      const decryptedV1Title = await decryptNoteContent(comparison.version1.title);
       const decryptedV1Content = await decryptNoteContent(comparison.version1.content);
-      const decryptedV2Title = await decryptNoteContent(comparison.version2.title);
       const decryptedV2Content = await decryptNoteContent(comparison.version2.content);
       
       const decryptedComparison = {
         ...comparison,
         version1: {
           ...comparison.version1,
-          title: comparison.version1.title,
           content: decryptedV1Content,
         },
         version2: {
           ...comparison.version2,
-          title: comparison.version2.title,
           content: decryptedV2Content,
         },
       };
@@ -304,7 +303,7 @@ export default function VersionHistoryScreen() {
                 <View style={styles.comparisonVersionColumn}>
                   <View style={[styles.comparisonVersionHeader, { backgroundColor: currentTheme.colors.background }]}>
                     <Text style={[styles.comparisonVersionLabel, { color: currentTheme.colors.primary }]}>
-                      Version {comparison.version1.version} (Previous)
+                      Version {comparison.version1.version} (CURRENT)
                     </Text>
                     <Text style={[styles.comparisonVersionDate, { color: currentTheme.colors.textSecondary }]}>
                       {new Date(comparison.version1.createdAt).toLocaleString()}
@@ -328,7 +327,7 @@ export default function VersionHistoryScreen() {
                 <View style={styles.comparisonVersionColumn}>
                   <View style={[styles.comparisonVersionHeader, { backgroundColor: currentTheme.colors.background }]}>
                     <Text style={[styles.comparisonVersionLabel, { color: currentTheme.colors.primary }]}>
-                      Version {comparison.version2.version} (Current)
+                      Version {comparison.version2.version} (PREVIOUS)
                     </Text>
                     <Text style={[styles.comparisonVersionDate, { color: currentTheme.colors.textSecondary }]}>
                       {new Date(comparison.version2.createdAt).toLocaleString()}
