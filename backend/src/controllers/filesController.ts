@@ -68,16 +68,14 @@ export const filesController = {
     }
   },
 
-  // Get file metadata
+  // Get file metadata (global access for collaborative notes)
   async getFileMetadata(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params as any;
       const userId = req.user!.id;
 
-      const fileMetadata = await FileMetadata.findOne({
-        _id: id,
-        uploadedBy: userId,
-      }).lean();
+      // Allow global access to files (for collaborative notes)
+      const fileMetadata = await FileMetadata.findById(id).lean();
 
       if (!fileMetadata) {
         res.status(404).json({
@@ -104,24 +102,22 @@ export const filesController = {
         },
       });
     } catch (error) {
-      logger.error('Error fetching file metadata:', error);
+      logger.error('Error getting file metadata:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch file metadata',
+        error: 'Failed to get file metadata',
       });
     }
   },
 
-  // Delete file
+  // Delete file (global access for collaborative notes)
   async deleteFile(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params as any;
       const userId = req.user!.id;
 
-      const fileMetadata = await FileMetadata.findOne({
-        _id: id,
-        uploadedBy: userId,
-      });
+      // Allow global access to files for collaborative notes
+      const fileMetadata = await FileMetadata.findById(id);
 
       if (!fileMetadata) {
         res.status(404).json({
@@ -157,16 +153,15 @@ export const filesController = {
     }
   },
 
-  // Get files by note ID
+  // Get files by note ID (global access for collaborative notes)
   async getFilesByNoteId(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
-
       const { noteId } = req.params as any;
       const userId = req.user!.id;
 
+      // Allow global access to files for collaborative notes
       const files = await FileMetadata.find({
         noteId,
-        uploadedBy: userId,
       }).lean();
 
       // Generate download URLs for each file
@@ -196,6 +191,69 @@ export const filesController = {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch files',
+      });
+    }
+  },
+
+  // Create sample files for testing (global access)
+  async createSampleFiles(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const { noteId } = req.body as any;
+
+      if (!noteId) {
+        res.status(400).json({
+          success: false,
+          error: 'Note ID is required',
+        });
+        return;
+      }
+
+      // Create sample file metadata (without actual file upload)
+      const sampleFiles = [
+        {
+          filename: 'sample-image-1',
+          originalName: 'sample-image-1.jpg',
+          mimeType: 'image/jpeg',
+          size: 1024000, // 1MB
+          uploadedBy: userId,
+          noteId,
+          s3Key: `uploads/${userId}/sample-image-1.jpg`,
+        },
+        {
+          filename: 'sample-document-1',
+          originalName: 'sample-document-1.pdf',
+          mimeType: 'application/pdf',
+          size: 2048000, // 2MB
+          uploadedBy: userId,
+          noteId,
+          s3Key: `uploads/${userId}/sample-document-1.pdf`,
+        },
+        {
+          filename: 'sample-video-1',
+          originalName: 'sample-video-1.mp4',
+          mimeType: 'video/mp4',
+          size: 5120000, // 5MB
+          uploadedBy: userId,
+          noteId,
+          s3Key: `uploads/${userId}/sample-video-1.mp4`,
+        },
+      ];
+
+      const createdFiles = await FileMetadata.insertMany(sampleFiles);
+
+      logger.info(`Created ${createdFiles.length} sample files for note: ${noteId}`);
+
+      res.json({
+        success: true,
+        message: 'Sample files created successfully',
+        data: createdFiles,
+      });
+    } catch (error) {
+      logger.error('Error creating sample files:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to create sample files',
       });
     }
   },
