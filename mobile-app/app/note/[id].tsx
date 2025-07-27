@@ -14,6 +14,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useAuthContext } from '../../src/contexts/AuthContext';
+import { useTheme } from '../../src/contexts/ThemeContext';
 import { useNotesStore, Note } from '../../src/store/notesStore';
 import { useSafeToast } from '../../src/utils/toast';
 import { collaborationService } from '../../src/services/collaborationService';
@@ -22,7 +23,7 @@ import { apiService } from '../../src/services/apiService';
 
 export default function NoteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState('');       
   const [content, setContent] = useState('');
   const [previousContent, setPreviousContent] = useState(''); // Track previous content for collaboration
   const [isLoading, setIsLoading] = useState(false);
@@ -42,6 +43,7 @@ export default function NoteScreen() {
   }>>([]);
   
   const { user, getAuthToken } = useAuthContext();
+  const { currentTheme } = useTheme();
   const { currentNote, fetchNote, createNote, updateNote, deleteNote, updateNoteContent } = useNotesStore();
   const { showError, showSuccess } = useSafeToast();
   
@@ -49,7 +51,7 @@ export default function NoteScreen() {
   const isNewNote = id === 'new';
 
   useEffect(() => {
-    if (!isNewNote && id) {
+    if (!isNewNote && id) { 
       loadNote();
       loadFiles();
     }
@@ -65,16 +67,18 @@ export default function NoteScreen() {
   }, [currentNote]);
 
   useEffect(() => {
-    if (!isNewNote && user) {
+    if (!isNewNote && user && id) {
       setupCollaboration();
     }
 
     return () => {
-      // if (!isNewNote) {
-      //   collaborationService.leaveNote();
-      // }
+      // Clean up note-specific listeners when leaving
+      if (!isNewNote && id) {
+        collaborationService.clearNoteListeners(id);
+        collaborationService.leaveNote();
+      }
     };
-  }, [isNewNote, user]);
+  }, [isNewNote, user, id]);
 
   // Periodic cursor position updates
   useEffect(() => {
@@ -130,6 +134,8 @@ export default function NoteScreen() {
         // Set up event listeners
         collaborationService.setContentChangeListener((operation: any) => {
           try {
+            console.log('Received content change operation:', operation);
+            
             // Handle full content updates
             if (operation.type === 'full-update') {
               console.log('Received full content update from user:', operation.userId);
@@ -160,7 +166,7 @@ export default function NoteScreen() {
           } catch (error) {
             console.error('Error applying content change:', error);
           }
-        });
+        }, id);
 
         // Set up cursor change listener
         collaborationService.setCursorChangeListener((cursorData: any) => {
@@ -191,12 +197,20 @@ export default function NoteScreen() {
           } catch (error) {
             console.error('Error handling cursor change:', error);
           }
+        }, id);
+
+        // Set up participant change listener
+        collaborationService.setParticipantChangeListener((participants: string[]) => {
+          console.log('Participants changed:', participants);
+          // You can update UI to show active participants
         });
 
         collaborationService.setErrorListener((error) => {
           console.error('Collaboration error:', error);
           // Don't show error to user for collaboration issues
         });
+
+        console.log('Collaboration setup completed successfully');
       }
     } catch (error) {
       console.error('Failed to setup collaboration:', error);
@@ -478,42 +492,50 @@ export default function NoteScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.colors.background }]}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2196F3" />
-          <Text style={styles.loadingText}>Loading note...</Text>
+          <ActivityIndicator size="large" color={currentTheme.colors.primary} />
+          <Text style={[styles.loadingText, { color: currentTheme.colors.textSecondary }]}>Loading note...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.colors.background }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: currentTheme.colors.surface, borderBottomColor: currentTheme.colors.border }]}>
         <View style={styles.headerContent}>
           <View style={styles.headerInfo}>
-            <Text style={styles.headerTitle}>
+            <Text style={[styles.headerTitle, { color: currentTheme.colors.text }]}>
               {isNewNote ? 'New Note' : 'Global Note'}
             </Text>
-            <Text style={styles.headerSubtitle}>
+            <Text style={[styles.headerSubtitle, { color: currentTheme.colors.textSecondary }]}>
               {isNewNote ? 'Create a new collaborative note' : 'Edit shared note with real-time collaboration'}
             </Text>
           </View>
           <View style={styles.headerActions}>
-            <TouchableOpacity 
-              style={[styles.headerButton, isSaving && styles.disabledButton]} 
-              onPress={handleSave}
-              disabled={isSaving}
-            >
+            {/* Attach icon */}
+            <TouchableOpacity style={styles.headerIconButton} onPress={handleFileUpload}>
+              <MaterialIcons name="attach-file" size={24} color={currentTheme.colors.primary} />
+            </TouchableOpacity>
+            {/* Delete icon (only for existing notes) */}
+            {!isNewNote && (
+              <TouchableOpacity style={styles.headerIconButton} onPress={handleDelete} disabled={isSaving}>
+                <MaterialIcons name="delete" size={24} color={currentTheme.colors.error} />
+              </TouchableOpacity>
+            )}
+            {/* Save icon */}
+            <TouchableOpacity style={styles.headerIconButton} onPress={handleSave} disabled={isSaving}>
               {isSaving ? (
-                <ActivityIndicator color="#2196F3" size="small" />
+                <ActivityIndicator color={currentTheme.colors.primary} size="small" />
               ) : (
-                <MaterialIcons name="save" size={20} color="#2196F3" />
+                <MaterialIcons name="save" size={24} color={currentTheme.colors.primary} />
               )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.headerButton} onPress={() => router.back()}>
-              <MaterialIcons name="close" size={20} color="#757575" />
+            {/* Cancel/Close icon */}
+            <TouchableOpacity style={styles.headerIconButton} onPress={() => router.back()}>
+              <MaterialIcons name="close" size={24} color={currentTheme.colors.textTertiary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -521,9 +543,9 @@ export default function NoteScreen() {
 
       {/* Collaboration Status */}
       {isCollaborating && (
-        <View style={styles.collaborationContainer}>
-          <MaterialIcons name="people" size={20} color="#2196F3" />
-          <Text style={styles.collaborationText}>
+        <View style={[styles.collaborationContainer, { backgroundColor: currentTheme.colors.surface }]}>
+          <MaterialIcons name="people" size={20} color={currentTheme.colors.primary} />
+          <Text style={[styles.collaborationText, { color: currentTheme.colors.textSecondary }]}>
             Real-time collaboration active • {collaborators.length + 1} users can edit
           </Text>
         </View>
@@ -531,8 +553,8 @@ export default function NoteScreen() {
 
       {/* Active Users */}
       {activeUsers.length > 0 && (
-        <View style={styles.activeUsersContainer}>
-          <Text style={styles.activeUsersTitle}>Currently Editing:</Text>
+        <View style={[styles.activeUsersContainer, { backgroundColor: currentTheme.colors.surface }]}>
+          <Text style={[styles.activeUsersTitle, { color: currentTheme.colors.text }]}>Currently Editing:</Text>
           <View style={styles.activeUsersList}>
             {activeUsers.map((user, index) => (
               <View key={user.userId} style={styles.activeUserItem}>
@@ -542,10 +564,10 @@ export default function NoteScreen() {
                     { backgroundColor: user.color }
                   ]} 
                 />
-                <Text style={styles.activeUserName}>
+                <Text style={[styles.activeUserName, { color: currentTheme.colors.text }]}>
                   {user.username}
                   {user.selection && (
-                    <Text style={styles.cursorPosition}>
+                    <Text style={[styles.cursorPosition, { color: currentTheme.colors.textSecondary }]}>
                       {' '}(position: {user.selection.start})
                     </Text>
                   )}
@@ -556,38 +578,46 @@ export default function NoteScreen() {
         </View>
       )}
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={[styles.content, { backgroundColor: currentTheme.colors.background }]} showsVerticalScrollIndicator={false}>
         {/* Note Content */}
         <View style={styles.inputContainer}>
-          <Text style={styles.label}>Title</Text>
+          <Text style={[styles.label, { color: currentTheme.colors.text }]}>Title</Text>
           <TextInput
-            style={styles.titleInput}
+            style={[styles.titleInput, { 
+              backgroundColor: currentTheme.colors.surface,
+              borderColor: currentTheme.colors.border,
+              color: currentTheme.colors.text
+            }]}
             placeholder="Enter note title"
             value={title}
             onChangeText={setTitle}
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={currentTheme.colors.textTertiary}
           />
         </View>
 
         <View style={styles.inputContainer}>
-          <Text style={styles.label}>Content</Text>
+          <Text style={[styles.label, { color: currentTheme.colors.text }]}>Content</Text>
           <TextInput
             ref={contentInputRef}
-            style={styles.contentInput}
+            style={[styles.contentInput, { 
+              backgroundColor: currentTheme.colors.surface,
+              borderColor: currentTheme.colors.border,
+              color: currentTheme.colors.text
+            }]}
             placeholder="Start writing your note..."
             value={content}
             onChangeText={handleContentChange}
             onSelectionChange={handleSelectionChange}
             multiline
             textAlignVertical="top"
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={currentTheme.colors.textTertiary}
           />
         </View>
 
         {/* File Attachments */}
         {attachedFiles.length > 0 && (
           <View key={attachedFiles.length} style={styles.filesContainer}>
-            <Text style={styles.label}>Attached Files</Text>
+            <Text style={[styles.label, { color: currentTheme.colors.text }]}>Attached Files</Text>
             {attachedFiles.map((file) => {
               // Determine file type and icon
               const getFileIcon = () => {
@@ -635,17 +665,17 @@ export default function NoteScreen() {
               };
 
               return (
-                <View key={file.id} style={styles.fileItem}>
+                <View key={file.id} style={[styles.fileItem, { backgroundColor: currentTheme.colors.surface, borderColor: currentTheme.colors.border }]}>
                   <MaterialIcons 
                     name={getFileIcon() as any} 
                     size={24} 
-                    color="#2196F3" 
+                    color={currentTheme.colors.primary} 
                   />
                   <View style={styles.fileInfo}>
-                    <Text style={styles.fileName}>{file.originalName}</Text>
+                    <Text style={[styles.fileName, { color: currentTheme.colors.text }]}>{file.originalName}</Text>
                     <View style={styles.fileTypeContainer}>
-                      <Text style={styles.fileTypeBadge}>{getFileTypeText()}</Text>
-                      <Text style={styles.fileSize}>
+                      <Text style={[styles.fileTypeBadge, { backgroundColor: currentTheme.colors.primary, color: '#FFFFFF' }]}>{getFileTypeText()}</Text>
+                      <Text style={[styles.fileSize, { color: currentTheme.colors.textSecondary }]}>
                         {fileUploadService.formatFileSize(file.size)}
                       </Text>
                     </View>
@@ -657,13 +687,13 @@ export default function NoteScreen() {
                      viewFile(file)
                     }}
                   >
-                    <MaterialIcons name="visibility" size={20} color="#2196F3" />
+                    <MaterialIcons name="visibility" size={20} color={currentTheme.colors.primary} />
                   </TouchableOpacity>
                   <TouchableOpacity 
                     style={styles.removeFileButton}
                     onPress={() => removeFile(file.id)}
                   >
-                    <MaterialIcons name="close" size={20} color="#F44336" />
+                    <MaterialIcons name="close" size={20} color={currentTheme.colors.error} />
                   </TouchableOpacity>
                 </View>
               );
@@ -673,12 +703,12 @@ export default function NoteScreen() {
 
         {/* Upload Progress */}
         {isUploading && (
-          <View style={styles.uploadProgressContainer}>
-            <Text style={styles.uploadProgressText}>
+          <View style={[styles.uploadProgressContainer, { backgroundColor: currentTheme.colors.surface }]}>
+            <Text style={[styles.uploadProgressText, { color: currentTheme.colors.text }]}>
               Uploading... {uploadProgress.toFixed(1)}%
             </Text>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
+            <View style={[styles.progressBar, { backgroundColor: currentTheme.colors.border }]}>
+              <View style={[styles.progressFill, { width: `${uploadProgress}%`, backgroundColor: currentTheme.colors.primary }]} />
             </View>
           </View>
         )}
@@ -686,15 +716,15 @@ export default function NoteScreen() {
 
       {/* Image Viewer Modal */}
       {viewingImage && (
-        <View style={styles.imageViewerOverlay}>
-          <View style={styles.imageViewerContainer}>
+        <View style={[styles.imageViewerOverlay, { backgroundColor: currentTheme.colors.backdrop }]}>
+          <View style={[styles.imageViewerContainer, { backgroundColor: currentTheme.colors.surface }]}>
             <View style={styles.imageViewerHeader}>
-              <Text style={styles.imageViewerTitle}>{viewingImage.name}</Text>
+              <Text style={[styles.imageViewerTitle, { color: currentTheme.colors.text }]}>{viewingImage.name}</Text>
               <TouchableOpacity 
                 style={styles.closeImageViewerButton}
                 onPress={() => setViewingImage(null)}
               >
-                <MaterialIcons name="close" size={24} color="#FFFFFF" />
+                <MaterialIcons name="close" size={24} color={currentTheme.colors.text} />
               </TouchableOpacity>
             </View>
             <Image 
@@ -706,39 +736,17 @@ export default function NoteScreen() {
         </View>
       )}
 
-      {/* Action Buttons */}
-      <View style={styles.footer}>
+      {/* Action Buttons (bottom) - Only Save and Cancel */}
+      <View style={[styles.footer, { backgroundColor: currentTheme.colors.surface, borderTopColor: currentTheme.colors.border }]}>
         <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()}>
-            <Text style={styles.cancelButtonText}>Cancel</Text>
+          <TouchableOpacity style={[styles.cancelButton, { backgroundColor: currentTheme.colors.surface, borderColor: currentTheme.colors.border }]} onPress={() => router.back()}>
+            <Text style={[styles.cancelButtonText, { color: currentTheme.colors.text }]}>Cancel</Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.uploadButton} onPress={handleFileUpload}>
-            <MaterialIcons name="attach-file" size={20} color="#2196F3" />
-            <Text style={styles.uploadButtonText}>Attach</Text>
-          </TouchableOpacity>
-          
-          {!isNewNote && (
-            <TouchableOpacity 
-              style={[styles.deleteButton, isSaving && styles.disabledButton]} 
-              onPress={handleDelete}
-              disabled={isSaving}
-            >
-              <Text style={styles.deleteButtonText}>Delete</Text>
-            </TouchableOpacity>
-          )}
-          
-          <TouchableOpacity 
-            style={[styles.saveButton, isSaving && styles.disabledButton]} 
-            onPress={handleSave}
-            disabled={isSaving}
-          >
+          <TouchableOpacity style={[styles.saveButton, { backgroundColor: currentTheme.colors.primary }, isSaving && styles.disabledButton]} onPress={handleSave} disabled={isSaving}>
             {isSaving ? (
               <ActivityIndicator color="white" size="small" />
             ) : (
-              <Text style={styles.saveButtonText}>
-                {isNewNote ? 'Create' : 'Save'}
-              </Text>
+              <Text style={styles.saveButtonText}>{isNewNote ? 'Create' : 'Save'}</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -1065,5 +1073,9 @@ const styles = StyleSheet.create({
   imageViewerImage: {
     width: '100%',
     height: '100%',
+  },
+  headerIconButton: {
+    padding: 8,
+    marginLeft: 4,
   },
 }); 

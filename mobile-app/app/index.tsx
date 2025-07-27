@@ -2,77 +2,42 @@ import React, { useEffect } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthContext } from '../src/contexts/AuthContext';
-import { useThemeContext } from '../src/contexts/ThemeContext';
+import { useTheme } from '../src/contexts/ThemeContext';
 
 export default function IndexScreen() {
-  const { isAuthenticated, isLoading, user } = useAuthContext();
-  const { theme, setTheme } = useThemeContext();
+  const { isAuthenticated, isLoading } = useAuthContext();
+  const { currentTheme } = useTheme();
 
   useEffect(() => {
-    // If user is already authenticated, redirect to home
-    if (isAuthenticated && user) {
-      router.replace('/home' as any);
-    } else if (!isLoading && !isAuthenticated) {
-      // If not authenticated and not loading, redirect to sign-in
-      router.replace('/sign-in' as any);
+    // Only navigate after the component is mounted and auth state is loaded
+    if (!isLoading) {
+      if (isAuthenticated) {
+        router.replace('/home' as any);
+      } else {
+        router.replace('/sign-in' as any);
+      }
     }
-  }, [isAuthenticated, isLoading, user]);
+  }, [isAuthenticated, isLoading]);
 
-  const handleThemeToggle = () => {
-    setTheme(theme === 'light' ? 'dark' : 'light');
-  };
-
-  // Show loading screen while checking authentication
-  if (isLoading) {
-    return (
-      <View style={[styles.container, styles.loadingContainer]}>
-        <ActivityIndicator size="large" color="#2196F3" />
-        <Text style={styles.loadingText}>Loading...</Text>
-      </View>
-    );
-  }
-
-  // This screen should not be visible if authentication is properly handled
   return (
-    <View style={[styles.container, { backgroundColor: theme === 'dark' ? '#121212' : '#FFFFFF' }]}>
+    <View style={[styles.container, { backgroundColor: currentTheme.colors.background }]}>
       <View style={styles.content}>
-        <Text style={[styles.title, { color: theme === 'dark' ? '#FFFFFF' : '#000000' }]}>
+        <Text style={[styles.title, { color: currentTheme.colors.text }]}>
           Secure Notes
         </Text>
-        <Text style={[styles.subtitle, { color: theme === 'dark' ? '#B0B0B0' : '#757575' }]}>
-          Your encrypted note-taking app
+        <Text style={[styles.subtitle, { color: currentTheme.colors.textSecondary }]}>
+          Collaborative encrypted note-taking
         </Text>
-        
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity 
-            style={styles.button}
-            onPress={() => router.push('/sign-in' as any)}
-          >
-            <Text style={styles.buttonText}>Sign In</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.button, styles.secondaryButton]}
-            onPress={() => router.push('/sign-up' as any)}
-          >
-            <Text style={[styles.buttonText, styles.secondaryButtonText]}>Sign Up</Text>
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity 
-          style={styles.themeButton}
-          onPress={handleThemeToggle}
-        >
-          <Text style={[styles.themeButtonText, { color: theme === 'dark' ? '#FFFFFF' : '#000000' }]}>
-            Toggle {theme === 'light' ? 'Dark' : 'Light'} Mode
-          </Text>
-        </TouchableOpacity>
+        <ActivityIndicator 
+          size="large" 
+          color={currentTheme.colors.primary} 
+          style={styles.loader}
+        />
       </View>
     </View>
   );
@@ -84,62 +49,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingContainer: {
-    backgroundColor: '#FFFFFF',
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#757575',
-  },
   content: {
     alignItems: 'center',
-    padding: 32,
+    padding: 24,
   },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
     marginBottom: 8,
-    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
-    marginBottom: 48,
     textAlign: 'center',
+    marginBottom: 32,
   },
-  buttonContainer: {
-    width: '100%',
-    marginBottom: 24,
-  },
-  button: {
-    backgroundColor: '#2196F3',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 8,
-    marginBottom: 12,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#2196F3',
-  },
-  secondaryButtonText: {
-    color: '#2196F3',
-  },
-  themeButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-  },
-  themeButtonText: {
-    fontSize: 14,
+  loader: {
+    marginTop: 16,
   },
 }); 

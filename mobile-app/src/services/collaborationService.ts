@@ -46,6 +46,10 @@ class CollaborationService {
   private onParticipantChange: ((participants: string[]) => void) | null = null;
   private onError: ((error: string) => void) | null = null;
   private isInitialized: boolean = false;
+  private noteSpecificListeners: Map<string, {
+    onContentChange: ((operation: any) => void) | null;
+    onCursorChange: ((cursors: any) => void) | null;
+  }> = new Map();
 
   constructor() {
     // Initialize socket when first needed
@@ -54,10 +58,11 @@ class CollaborationService {
   private async testBackendConnection(): Promise<boolean> {
     try {
       const API_URL = process.env.EXPO_PUBLIC_SOCKET_URL || 'http://10.40.1.77:3001';
+      console.log('Testing backend connection to:', `${API_URL}/health`);
       const response = await fetch(`${API_URL}/health`, {
         method: 'GET',
       });
-      console.log('Backend connection test response:', response);
+      console.log('Backend connection test response:', response.status);
       return response.ok;
     } catch (error) {
       console.warn('Backend not reachable:', error);
@@ -82,7 +87,7 @@ class CollaborationService {
   }
 
   private async setupSocket() {
-    const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL || 'http://localhost:3001';
+    const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL || 'http://10.40.1.77:3001';
     
     console.log('Setting up collaboration socket with URL:', SOCKET_URL);
     
@@ -94,7 +99,7 @@ class CollaborationService {
       this.socket = io(SOCKET_URL, {
         transports: ['websocket'],
         autoConnect: false,
-        timeout: 5000,
+        timeout: 10000,
         auth: {
           token: token || '',
         },
@@ -127,37 +132,55 @@ class CollaborationService {
         content: string;
         userId: string;
         timestamp: number;
+        noteId: string;
       }) => {
-        console.log('Received full content update from user:', data.userId);
-        if (this.onContentChange) {
-          // Pass the full content instead of operation
-          this.onContentChange({
+        console.log('Received full content update from user:', data.userId, 'for note:', data.noteId);
+        
+        // Only trigger listener for the specific note
+        const listener = this.noteSpecificListeners.get(data.noteId);
+        if (listener && listener.onContentChange) {
+          listener.onContentChange({
             type: 'full-update',
             content: data.content,
             userId: data.userId,
             timestamp: data.timestamp,
-          } as any);
+          });
         }
       });
 
-      this.socket.on(WebSocketEvents.CURSOR_POSITION, (cursors: CursorPosition[]) => {
-        console.log('Received cursor positions:', cursors);
-        if (this.onCursorChange) {
-          this.onCursorChange(cursors);
+      this.socket.on(WebSocketEvents.CURSOR_POSITION, (data: {
+        userId: string;
+        position: { x: number; y: number };
+        selection?: { start: number; end: number };
+        username: string;
+        color: string;
+        timestamp: number;
+        noteId: string;
+      }) => {
+        console.log('Received cursor position from user:', data.userId, 'for note:', data.noteId);
+        
+        // Only trigger listener for the specific note
+        const listener = this.noteSpecificListeners.get(data.noteId);
+        if (listener && listener.onCursorChange) {
+          listener.onCursorChange(data);
         }
       });
 
-      this.socket.on(WebSocketEvents.PARTICIPANT_JOINED, (participant: string) => {
-        console.log('Participant joined:', participant);
+      this.socket.on('user-joined', (data: {
+        userId: string;
+        userName: string;
+        activeUsers: Array<{ userId: string; userName: string }>;
+      }) => {
+        console.log('User joined:', data.userName);
         if (this.onParticipantChange) {
-          this.onParticipantChange([participant]);
+          this.onParticipantChange([data.userName]);
         }
       });
 
-      this.socket.on(WebSocketEvents.PARTICIPANT_LEFT, (participant: string) => {
-        console.log('Participant left:', participant);
+      this.socket.on('user-left', (data: { userId: string }) => {
+        console.log('User left:', data.userId);
         if (this.onParticipantChange) {
-          this.onParticipantChange([participant]);
+          this.onParticipantChange([]);
         }
       });
 
@@ -238,13 +261,6 @@ class CollaborationService {
           noteId: this.currentNoteId,
           userId: this.userId,
         });
-
-        // Also notify backend via REST API
-        try {
-          await apiService.leaveNote(this.currentNoteId);
-        } catch (apiError) {
-          console.warn('Failed to notify backend about leaving note:', apiError);
-        }
       }
 
       this.currentNoteId = null;
@@ -261,7 +277,7 @@ class CollaborationService {
   sendContentChange(fullContent: string): void {
     try {
       if (this.socket && this.socket.connected && this.currentNoteId) {
-        console.log('Sending full content update:', fullContent);
+        console.log('Sending full content update for note:', this.currentNoteId);
         this.socket.emit(WebSocketEvents.FULL_CONTENT_UPDATE, {
           noteId: this.currentNoteId,
           content: fullContent,
@@ -290,7 +306,7 @@ class CollaborationService {
         },
       };
       
-      console.log('Sending cursor position:', cursorData);
+      console.log('Sending cursor position for note:', this.currentNoteId);
       this.socket.emit(WebSocketEvents.CURSOR_POSITION, cursorData);
     }
   }
@@ -386,12 +402,26 @@ class CollaborationService {
   }
 
   // Event listeners
-  setContentChangeListener(callback: (operation: OperationalTransform) => void): void {
-    this.onContentChange = callback;
+  setContentChangeListener(callback: (operation: OperationalTransform) => void, noteId: string): void {
+    if (!this.noteSpecificListeners.has(noteId)) {
+      this.noteSpecificListeners.set(noteId, {
+        onContentChange: null,
+        onCursorChange: null,
+      });
+    }
+    const listeners = this.noteSpecificListeners.get(noteId)!;
+    listeners.onContentChange = callback;
   }
 
-  setCursorChangeListener(callback: (cursors: CursorPosition[]) => void): void {
-    this.onCursorChange = callback;
+  setCursorChangeListener(callback: (cursors: CursorPosition[]) => void, noteId: string): void {
+    if (!this.noteSpecificListeners.has(noteId)) {
+      this.noteSpecificListeners.set(noteId, {
+        onContentChange: null,
+        onCursorChange: null,
+      });
+    }
+    const listeners = this.noteSpecificListeners.get(noteId)!;
+    listeners.onCursorChange = callback;
   }
 
   setParticipantChangeListener(callback: (participants: string[]) => void): void {
@@ -400,6 +430,11 @@ class CollaborationService {
 
   setErrorListener(callback: (error: string) => void): void {
     this.onError = callback;
+  }
+
+  // Cleanup specific note listeners
+  clearNoteListeners(noteId: string): void {
+    this.noteSpecificListeners.delete(noteId);
   }
 
   // Cleanup
@@ -413,6 +448,7 @@ class CollaborationService {
     this.onCursorChange = null;
     this.onParticipantChange = null;
     this.onError = null;
+    this.noteSpecificListeners.clear();
   }
 
   isConnected(): boolean {

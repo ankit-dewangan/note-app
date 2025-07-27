@@ -2,280 +2,273 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
   FlatList,
   ActivityIndicator,
+  Alert,
+  RefreshControl,
+  Animated,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useAuthContext } from '../src/contexts/AuthContext';
-import { useNotesStore, Note } from '../src/store/notesStore';
-import { useSafeToast } from '../src/utils/toast';
-import * as SecureStore from 'expo-secure-store';
+import { useTheme } from '../src/contexts/ThemeContext';
+import { useNotesStore } from '../src/store/notesStore';
+import { apiService } from '../src/services/apiService';
 
 export default function HomeScreen() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const { user, signOut } = useAuthContext();
-  const { 
-    notes, 
-    searchResults, 
-    isSearching,
-    fetchNotes, 
-    searchNotes, 
-    clearSearch 
-  } = useNotesStore();
-  const { showError, showSuccess } = useSafeToast();
+  const [isLoading, setIsLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshRotation] = useState(new Animated.Value(0));
+  const { signOut } = useAuthContext();
+  const { currentTheme, toggleTheme, themeType } = useTheme();
+  const { notes, fetchNotes, createSampleNotes } = useNotesStore();
 
   useEffect(() => {
     loadNotes();
   }, []);
 
-  // Debug effect to monitor notes state
+  // Animate refresh icon rotation
   useEffect(() => {
-    console.log('Home screen: Notes state changed:', {
-      notesCount: notes.length,
-      isLoading: false,
-      searchResultsCount: searchResults.length,
-      isSearching
-    });
-  }, [notes, searchResults, isSearching]);
+    if (refreshing) {
+      Animated.loop(
+        Animated.timing(refreshRotation, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        })
+      ).start();
+    } else {
+      refreshRotation.setValue(0);
+    }
+  }, [refreshing]);
+
+  const spin = refreshRotation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
 
   const loadNotes = async () => {
     try {
-      console.log('Home screen: Starting loadNotes...');
+      setIsLoading(true);
       await fetchNotes();
-      console.log('Home screen: loadNotes completed');
+      setLastUpdated(new Date());
     } catch (error) {
-      console.error('Home screen: Error in loadNotes:', error);
-      showError('Failed to load notes', 'Error');
+      console.error('Error loading notes:', error);
+      Alert.alert('Error', 'Failed to load notes');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleSearch = async (query: string) => {
-    setSearchQuery(query);
-    if (query.trim()) {
-      try {
-        await searchNotes(query);
-      } catch (error) {
-        showError('Search failed', 'Error');
-      }
-    } else {
-      clearSearch();
-    }
-  };
-
-  const handleSignOut = async () => {
+  const onRefresh = async () => {
     try {
-      await signOut();
+      setRefreshing(true);
+      await fetchNotes();
+      setLastUpdated(new Date());
+      // Show a brief success message
+      console.log('Notes refreshed successfully');
     } catch (error) {
-      showError('Sign out failed', 'Error');
+      console.error('Error refreshing notes:', error);
+      Alert.alert('Error', 'Failed to refresh notes');
+    } finally {
+      setRefreshing(false);
     }
   };
 
-  const createSampleNotes = async () => {
+  const handleCreateSampleNotes = async () => {
     try {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/notes/sample`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await SecureStore.getItemAsync('auth_token')}`,
-        },
-      });
-      
-      if (response.ok) {
-        await loadNotes(); // Refresh the notes list
-        showSuccess('Sample notes created!', 'Success');
-      } else {
-        showError('Failed to create sample notes', 'Error');
-      }
+      setIsLoading(true);
+      await createSampleNotes();
+      Alert.alert('Success', 'Sample notes created successfully!');
     } catch (error) {
-      showError('Failed to create sample notes', 'Error');
+      console.error('Error creating sample notes:', error);
+      Alert.alert('Error', 'Failed to create sample notes');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const testEncryption = async () => {
-    try {
-      const { encryptNoteContent, decryptNoteContent } = await import('../src/utils/encryption');
-      
-      const testContent = 'This is a test note content for encryption testing.';
-      console.log('Original content:', testContent);
-      
-      const encrypted = await encryptNoteContent(testContent);
-      console.log('Encrypted content:', encrypted);
-      
-      const decrypted = await decryptNoteContent(encrypted);
-      console.log('Decrypted content:', decrypted);
-      
-      if (testContent === decrypted) {
-        showSuccess('Encryption test passed!', 'Success');
-      } else {
-        showError('Encryption test failed!', 'Error');
-      }
-    } catch (error) {
-      console.error('Encryption test error:', error);
-      showError('Encryption test failed!', 'Error');
-    }
+  const handleSignOut = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign Out', style: 'destructive', onPress: signOut },
+      ]
+    );
   };
 
-  const renderNoteItem = ({ item }: { item: Note }) => (
-    <TouchableOpacity 
-      style={styles.noteItem}
-      onPress={() => router.push(`/note/${item.id}` as any)}
+  const handleNotePress = (noteId: string) => {
+    router.push(`/note/${noteId}` as any);
+  };
+
+  const handleSearchPress = () => {
+    router.push('/search' as any);
+  };
+
+  const handleAddNote = () => {
+    router.push('/note/new' as any);
+  };
+
+  const handleThemePress = () => {
+    router.push('/settings/theme' as any);
+  };
+
+  const handleSettingsPress = () => {
+    router.push('/settings' as any);
+  };
+
+  const renderNote = ({ item }: { item: any }) => (
+    <TouchableOpacity
+      style={[styles.noteCard, { backgroundColor: currentTheme.colors.card }]}
+      onPress={() => handleNotePress(item.id)}
     >
-      <View style={styles.noteContent}>
-        <View style={styles.noteHeader}>
-          <View style={styles.noteInfo}>
-            <Text style={styles.noteTitle} numberOfLines={1}>
-              {item.title}
-            </Text>
-            <Text style={styles.notePreview} numberOfLines={2}>
-              {item.content}
-            </Text>
-          </View>
-          <TouchableOpacity 
-            style={styles.moreButton}
-            onPress={() => router.push(`/note/${item.id}` as any)}
-          >
-            <MaterialIcons name="more-vert" size={20} color="#757575" />
-          </TouchableOpacity>
+      <View style={styles.noteHeader}>
+        <Text style={[styles.noteTitle, { color: currentTheme.colors.text }]} numberOfLines={2}>
+          {item.title || 'Untitled Note'}
+        </Text>
+        <Text style={[styles.noteDate, { color: currentTheme.colors.textSecondary }]}>
+          {new Date(item.updatedAt).toLocaleDateString()}
+        </Text>
+      </View>
+      
+      <Text style={[styles.noteContent, { color: currentTheme.colors.textSecondary }]} numberOfLines={3}>
+        {item.content || 'No content'}
+      </Text>
+      
+      <View style={styles.noteMeta}>
+        <View style={styles.collaborationInfo}>
+          <MaterialIcons name="group" size={16} color={currentTheme.colors.primary} />
+          <Text style={[styles.collaborationText, { color: currentTheme.colors.textSecondary }]}>
+            Global Note • Real-time collaboration
+          </Text>
         </View>
-        <View style={styles.noteFooter}>
-          <View style={styles.noteMeta}>
-            <Text style={styles.noteDate}>
-              {new Date(item.updatedAt).toLocaleDateString()}
-            </Text>
-            {item.collaborators && item.collaborators.length > 0 && (
-              <View style={styles.collaborationInfo}>
-                <MaterialIcons name="people" size={16} color="#2196F3" />
-                <Text style={styles.collaborationText}>
-                  {item.collaborators.length + 1} collaborators
-                </Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.noteActions}>
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={() => router.push(`/note/${item.id}` as any)}
-            >
-              <MaterialIcons name="edit" size={16} color="#2196F3" />
-            </TouchableOpacity>
-          </View>
-        </View>
+      </View>
+      
+      <View style={styles.noteActions}>
+        <TouchableOpacity style={styles.actionButton}>
+          <MaterialIcons name="edit" size={16} color={currentTheme.colors.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionButton}>
+          <MaterialIcons name="delete" size={16} color={currentTheme.colors.error} />
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyContainer}>
-      <MaterialIcons name="note-add" size={64} color="#757575" />
-      <Text style={styles.emptyTitle}>
-        {searchQuery ? 'No notes found' : 'No notes yet'}
-      </Text>
-      <Text style={styles.emptySubtitle}>
-        {searchQuery 
-          ? 'Try adjusting your search terms' 
-          : 'Create your first encrypted note to get started'
-        }
-      </Text>
-      {!searchQuery && (
-        <TouchableOpacity 
-          style={styles.createButton}
-          onPress={() => router.push('/note/new' as any)}
-        >
-          <MaterialIcons name="add" size={20} color="white" />
-          <Text style={styles.createButtonText}>Create Note</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-
-  const displayNotes = searchQuery.trim() ? searchResults : notes;
-
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.colors.background }]}>
       {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <View style={styles.headerInfo}>
-            <Text style={styles.headerTitle}>Global Notes</Text>
-            <Text style={styles.headerSubtitle}>
-              Collaborative notes shared across all users
+      <View style={[styles.header, { borderBottomColor: currentTheme.colors.border }]}>
+        <View style={styles.headerLeft}>
+          <Text style={[styles.headerTitle, { color: currentTheme.colors.text }]}>
+            Global Notes
+          </Text>
+          <Text style={[styles.headerSubtitle, { color: currentTheme.colors.textSecondary }]}>
+            Collaborative notes shared across all users
+         
+          </Text>
+        </View>
+        
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.headerButton} onPress={onRefresh} disabled={refreshing}>
+            {refreshing ? (
+              <Animated.View style={{ transform: [{ rotate: spin }] }}>
+                <ActivityIndicator size="small" color={currentTheme.colors.primary} />
+              </Animated.View>
+            ) : (
+              <MaterialIcons name="refresh" size={24} color={currentTheme.colors.primary} />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerButton} onPress={handleSearchPress}>
+            <MaterialIcons name="search" size={24} color={currentTheme.colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerButton} onPress={handleThemePress}>
+            <MaterialIcons 
+              name={themeType === 'dark' ? 'light-mode' : 'dark-mode'} 
+              size={24} 
+              color={currentTheme.colors.primary} 
+            />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerButton} onPress={handleSettingsPress}>
+            <MaterialIcons name="settings" size={24} color={currentTheme.colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerButton} onPress={handleSignOut}>
+            <MaterialIcons name="logout" size={24} color={currentTheme.colors.primary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Content */}
+      <View style={styles.content}>
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={currentTheme.colors.primary} />
+            <Text style={[styles.loadingText, { color: currentTheme.colors.textSecondary }]}>
+              Loading notes...
             </Text>
           </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity 
-              style={styles.testButton}
-              onPress={testEncryption}
-            >
-              <MaterialIcons name="security" size={24} color="#FF9800" />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.sampleButton}
-              onPress={createSampleNotes}
-            >
-              <MaterialIcons name="add-circle" size={24} color="#4CAF50" />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.searchButton}
-              onPress={() => setSearchQuery('')}
-            >
-              <MaterialIcons name="search" size={24} color="#2196F3" />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.addButton}
-              onPress={() => router.push('/note/new' as any)}
-            >
-              <MaterialIcons name="add" size={24} color="white" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchInputContainer}>
-          <MaterialIcons name="search" size={20} color="#757575" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search notes..."
-            value={searchQuery}
-            onChangeText={handleSearch}
-            placeholderTextColor="#9CA3AF"
-          />
-          {isSearching && (
-            <ActivityIndicator size="small" color="#2196F3" style={styles.searchSpinner} />
-          )}
-        </View>
-      </View>
-
-      {/* Notes List */}
-      <View style={styles.notesContainer}>
-        {displayNotes.length > 0 ? (
+        ) : notes.length > 0 ? (
           <FlatList
-            data={displayNotes}
-            renderItem={renderNoteItem}
+            data={notes}
+            renderItem={renderNote}
             keyExtractor={(item) => item.id}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.notesList}
-            refreshing={false}
-            onRefresh={loadNotes}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={[currentTheme.colors.primary]}
+                tintColor={currentTheme.colors.primary}
+              />
+            }
           />
         ) : (
-          renderEmptyState()
+          <View style={styles.emptyContainer}>
+            <MaterialIcons name="note-add" size={64} color={currentTheme.colors.textTertiary} />
+            <Text style={[styles.emptyTitle, { color: currentTheme.colors.text }]}>
+              No notes yet
+            </Text>
+            <Text style={[styles.emptySubtitle, { color: currentTheme.colors.textSecondary }]}>
+              Create your first note or add sample notes to get started
+            </Text>
+            
+            <View style={styles.emptyActions}>
+              <TouchableOpacity
+                style={[styles.emptyButton, { backgroundColor: currentTheme.colors.primary }]}
+                onPress={handleAddNote}
+              >
+                <MaterialIcons name="add" size={20} color="#FFFFFF" />
+                <Text style={styles.emptyButtonText}>Create Note</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.emptyButton, styles.sampleButton, { backgroundColor: currentTheme.colors.secondary }]}
+                onPress={handleCreateSampleNotes}
+              >
+                <MaterialIcons name="auto-awesome" size={20} color="#FFFFFF" />
+                <Text style={styles.emptyButtonText}>Add Sample Notes</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
       </View>
 
       {/* Floating Action Button */}
-      <TouchableOpacity 
-        style={styles.fab}
-        onPress={ () => { router.push('/note/new' as any)}}
-      >
-        <MaterialIcons name="add" size={24} color="white" />
-      </TouchableOpacity>
+      {notes.length > 0 && (
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: currentTheme.colors.primary }]}
+          onPress={handleAddNote}
+        >
+          <MaterialIcons name="add" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
@@ -283,103 +276,53 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
   },
   header: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
-  },
-  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
   },
-  headerInfo: {
+  headerLeft: {
     flex: 1,
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#000000',
+    marginBottom: 4,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#757575',
-    marginTop: 4,
   },
   headerActions: {
     flexDirection: 'row',
-    alignItems: 'center',
+    gap: 8,
   },
-  testButton: {
-    padding: 8,
-    marginRight: 8,
-  },
-  sampleButton: {
-    padding: 8,
-    marginRight: 8,
-  },
-  searchButton: {
-    padding: 8,
-    marginRight: 8,
-  },
-  addButton: {
-    backgroundColor: '#2196F3',
-    padding: 8,
-    borderRadius: 20,
-  },
-  logoutButton: {
+  headerButton: {
     padding: 8,
   },
-  searchContainer: {
-    padding: 16,
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
+  content: {
     flex: 1,
-    height: 48,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
     fontSize: 16,
-    color: '#000000',
-  },
-  searchSpinner: {
-    marginLeft: 8,
-  },
-  notesContainer: {
-    flex: 1,
-    paddingHorizontal: 16,
   },
   notesList: {
-    paddingBottom: 100,
-  },
-  noteItem: {
-    backgroundColor: '#FFFFFF',
     padding: 16,
-    borderRadius: 8,
-    marginBottom: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#2196F3',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
   },
-  noteContent: {
-    flex: 1,
+  noteCard: {
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
   },
   noteHeader: {
     flexDirection: 'row',
@@ -387,50 +330,35 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 8,
   },
-  noteInfo: {
-    flex: 1,
-    marginRight: 8,
-  },
   noteTitle: {
+    flex: 1,
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#000000',
-    marginBottom: 4,
-  },
-  notePreview: {
-    fontSize: 14,
-    color: '#757575',
-    lineHeight: 20,
-  },
-  moreButton: {
-    padding: 4,
-  },
-  noteFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  noteMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    fontWeight: '600',
+    marginRight: 8,
   },
   noteDate: {
     fontSize: 12,
-    color: '#757575',
+  },
+  noteContent: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  noteMeta: {
+    marginBottom: 12,
   },
   collaborationInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 8,
+    gap: 4,
   },
   collaborationText: {
     fontSize: 12,
-    color: '#2196F3',
-    marginLeft: 4,
   },
   noteActions: {
     flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 8,
   },
   actionButton: {
     padding: 4,
@@ -444,31 +372,33 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#757575',
-    textAlign: 'center',
     marginTop: 16,
+    marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 16,
-    color: '#757575',
     textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 24,
+    marginBottom: 32,
   },
-  createButton: {
-    backgroundColor: '#2196F3',
+  emptyActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  emptyButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 8,
+    gap: 8,
   },
-  createButtonText: {
-    color: 'white',
-    fontSize: 18,
+  emptyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
     fontWeight: '600',
-    marginLeft: 8,
+  },
+  sampleButton: {
+    backgroundColor: '#FF9800',
   },
   fab: {
     position: 'absolute',
@@ -477,16 +407,15 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#2196F3',
-    justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
+    justifyContent: 'center',
     elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+  },
+  lastUpdated: {
+    fontSize: 12,
   },
 }); 

@@ -10,6 +10,21 @@ function generateEncryptionKey(): string {
   return randomBytes(32).toString('hex');
 }
 
+// Simple encryption function for sample notes (using global key)
+function encryptContent(content: string): string {
+  // Use a simple XOR encryption with a global key for sample notes
+  const globalKey = 'global-collaborative-notes-key-2024';
+  const encodedContent = Buffer.from(content, 'utf8');
+  const encodedKey = Buffer.from(globalKey, 'utf8');
+  
+  const encrypted = Buffer.alloc(encodedContent.length);
+  for (let i = 0; i < encodedContent.length; i++) {
+    encrypted[i] = encodedContent[i] ^ encodedKey[i % encodedKey.length];
+  }
+  
+  return encrypted.toString('base64');
+}
+
 export const notesController = {
   // Get all notes (global access)
   async getNotes(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -341,7 +356,7 @@ export const notesController = {
       const sampleNotes = [
         {
           title: 'Sample Note 1 - Welcome',
-          content: 'Welcome to the global collaborative notes app! This note is shared across all users.',
+          content: encryptContent('Welcome to the global collaborative notes app! This note is shared across all users.'),
           createdBy: userId,
           collaborators: [],
           tags: ['welcome', 'introduction'],
@@ -349,7 +364,7 @@ export const notesController = {
         },
         {
           title: 'Sample Note 2 - Collaboration',
-          content: 'This note demonstrates real-time collaboration. Multiple users can edit this note simultaneously.',
+          content: encryptContent('This note demonstrates real-time collaboration. Multiple users can edit this note simultaneously.'),
           createdBy: userId,
           collaborators: [],
           tags: ['collaboration', 'demo'],
@@ -357,7 +372,7 @@ export const notesController = {
         },
         {
           title: 'Sample Note 3 - Features',
-          content: 'Features include: Real-time editing, File attachments, Search functionality, and more!',
+          content: encryptContent('Features include: Real-time editing, File attachments, Search functionality, and more!'),
           createdBy: userId,
           collaborators: [],
           tags: ['features', 'guide'],

@@ -1,8 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth, useUser, useSignIn, useSignUp } from '@clerk/clerk-expo';
+import { router } from 'expo-router';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
-import { router } from 'expo-router';
 import { apiService } from '../services/apiService';
 
 interface AuthContextType {
@@ -47,14 +47,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isLoaded) {
       setIsLoading(false);
       
-      // Handle authentication state changes
+      // Handle authentication state changes - sync with backend but don't navigate
       if (isSignedIn && user) {
-        // User is authenticated, sync with backend and navigate to home
+        // User is authenticated, sync with backend
         syncUserWithBackend();
-        router.replace('/home' as any);
-      } else if (!isSignedIn) {
-        // User is not authenticated, navigate to sign-in
-        router.replace('/sign-in' as any);
       }
     }
   }, [isLoaded, isSignedIn, user]);
@@ -127,24 +123,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (signInAttempt.status === 'complete') {
         // Check if biometrics is enabled and authenticate
-        if (isBiometricsEnabled) {
-          const biometricAuth = await authenticateWithBiometrics();
-          if (!biometricAuth) {
-            await clerkSignOut();
+        const biometricsEnabled = await SecureStore.getItemAsync('biometrics_enabled');
+        if (biometricsEnabled === 'true') {
+          const biometricResult = await LocalAuthentication.authenticateAsync({
+            promptMessage: 'Authenticate with biometrics',
+            fallbackLabel: 'Use password',
+          });
+          
+          if (!biometricResult.success) {
             throw new Error('Biometric authentication failed');
           }
         }
 
         // Set the session as active
-        if (setActiveSignIn) {
-          await setActiveSignIn({ session: signInAttempt.createdSessionId });
-        }
+        await setActiveSignIn({ session: signInAttempt.createdSessionId });
+        
+        // Store credentials for biometric login
+        await SecureStore.setItemAsync('biometric_email', email);
+        await SecureStore.setItemAsync('biometric_password', password);
         
         // Sync user with backend
         await syncUserWithBackend();
         router.replace('/home' as any);
       } else {
-        throw new Error('Sign in failed - incomplete status');
+        
+        throw new Error('Sign in failed');
       }
     } catch (error) {
       console.error('Sign in error:', error);
@@ -163,7 +166,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Use Clerk's signUp method correctly
-      console.log('Signing up with email:', email, 'password:', password, 'firstName:', firstName, 'lastName:', lastName);
       const signUpAttempt = await clerkSignUp.create({
         emailAddress: email,
         password: password,
@@ -173,15 +175,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (signUpAttempt.status === 'complete') {
         // Set the session as active
-        if (setActiveSignUp) {
-          await setActiveSignUp({ session: signUpAttempt.createdSessionId });
-        }
+        await setActiveSignUp({ session: signUpAttempt.createdSessionId });
+        
+        // Store credentials for biometric login
+        await SecureStore.setItemAsync('biometric_email', email);
+        await SecureStore.setItemAsync('biometric_password', password);
         
         // Sync user with backend
         await syncUserWithBackend();
         router.replace('/home' as any);
       } else {
-        throw new Error('Sign up failed - incomplete status');
+        throw new Error('Sign up failed');
       }
     } catch (error) {
       console.error('Sign up error:', error);
@@ -194,8 +198,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
       setIsLoading(true);
-      await clerkSignOut();
-      router.replace('/sign-in' as any);
+      
+      if (clerkSignOut) {
+        await clerkSignOut();
+      }
+
+      // Clear stored credentials
+      await SecureStore.deleteItemAsync('biometric_email');
+      await SecureStore.deleteItemAsync('biometric_password');
+      await SecureStore.deleteItemAsync('auth_token');
+      router.replace('/');
     } catch (error) {
       console.error('Sign out error:', error);
       throw error;
@@ -206,15 +218,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const enableBiometrics = async () => {
     try {
-      if (!isBiometricsAvailable) {
-        throw new Error('Biometrics not available on this device');
-      }
-
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Authenticate to enable biometrics',
-        fallbackLabel: 'Use passcode',
+        promptMessage: 'Enable biometric authentication',
+        fallbackLabel: 'Use password',
       });
-
+      
       if (result.success) {
         await SecureStore.setItemAsync('biometrics_enabled', 'true');
         setIsBiometricsEnabled(true);
@@ -222,22 +230,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Biometric authentication failed');
       }
     } catch (error) {
-      console.error('Enable biometrics error:', error);
+      console.error('Error enabling biometrics:', error);
       throw error;
     }
   };
 
   const authenticateWithBiometrics = async (): Promise<boolean> => {
     try {
-      if (!isBiometricsAvailable || !isBiometricsEnabled) {
-        return false;
-      }
-
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Authenticate to access your notes',
-        fallbackLabel: 'Use passcode',
+        promptMessage: 'Authenticate with biometrics',
+        fallbackLabel: 'Use password',
       });
-
+      
       return result.success;
     } catch (error) {
       console.error('Biometric authentication error:', error);
@@ -246,7 +250,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const value: AuthContextType = {
-    isAuthenticated: isSignedIn || false,
+    isAuthenticated: isSignedIn,
     isLoading,
     user,
     signIn,
@@ -259,5 +263,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     getAuthToken,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 }; 

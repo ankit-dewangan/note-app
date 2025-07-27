@@ -42,10 +42,21 @@ interface SearchResult {
   id: string;
   title: string;
   content: string;
+  tags?: string[];
+  createdBy: string;
+  collaborators: string[];
+  createdAt: Date;
+  updatedAt: Date;
   score: number;
   highlights: {
     title: string[];
     content: string[];
+    tags: string[];
+  };
+  matchType: {
+    title: boolean;
+    content: boolean;
+    tags: boolean;
   };
 }
 
@@ -158,26 +169,30 @@ class ApiService {
     });
   }
 
-  async addCollaborator(noteId: string, userId: string): Promise<void> {
-    await this.makeRequest(`/notes/${noteId}/collaborators`, {
-      method: 'POST',
-      body: JSON.stringify({ userId }),
-    });
-  }
-
-  async removeCollaborator(noteId: string, userId: string): Promise<void> {
-    await this.makeRequest(`/notes/${noteId}/collaborators/${userId}`, {
-      method: 'DELETE',
-    });
-  }
-
   // Search
-  async searchNotes(query: string, page: number = 1, limit: number = 20): Promise<SearchResponse> {
+  async searchNotes(
+    query: string, 
+    page: number = 1, 
+    limit: number = 20,
+    searchType: 'all' | 'title' | 'content' | 'tags' = 'all',
+    tags?: string[],
+    collaborators?: string[]
+  ): Promise<SearchResponse> {
     const params = new URLSearchParams({
       query,
       page: page.toString(),
       limit: limit.toString(),
+      searchType,
     });
+
+    if (tags && tags.length > 0) {
+      tags.forEach(tag => params.append('tags', tag));
+    }
+
+    if (collaborators && collaborators.length > 0) {
+      collaborators.forEach(collaborator => params.append('collaborators', collaborator));
+    }
+
     return this.makeRequest<SearchResponse>(`/search?${params}`);
   }
 

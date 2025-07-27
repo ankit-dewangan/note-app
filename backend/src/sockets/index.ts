@@ -123,14 +123,16 @@ export function setupSocketHandlers(io: Server): void {
       socket.to(noteId).emit('full-content-update', {
         userId,
         content,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        noteId
       });
       
       // Also emit to the sender for confirmation
       socket.emit('full-content-update-received', {
         userId,
         content,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        noteId
       });
       
       logger.debug(`Full content update in note ${noteId} by user ${userId}`);
@@ -159,7 +161,8 @@ export function setupSocketHandlers(io: Server): void {
         selection: cursor.selection,
         username: cursor.username,
         color: cursor.color,
-        timestamp: cursor.timestamp
+        timestamp: cursor.timestamp,
+        noteId
       });
       
       logger.debug(`Cursor position update in note ${noteId} by user ${cursor.userId}`);

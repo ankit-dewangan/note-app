@@ -146,20 +146,24 @@ export const decryptNoteContent = async (encryptedContent: string): Promise<stri
   try {
     console.log('Decrypting content, length:', encryptedContent.length);
     
-    // Check if content is encrypted (base64 format)
-    if (!encryptedContent.includes('==') && encryptedContent.length < 50) {
-      // Content is not encrypted, return as-is
-      console.log('Content appears to be plain text, returning as-is');
+    // Check if content is encrypted by trying to decode it as base64
+    // If it's not valid base64, it's likely plain text
+    try {
+      // Try to decode as base64 to see if it's encrypted
+      const decoded = atob(encryptedContent);
+      // If we can decode it and it's longer than a reasonable plain text length, it's probably encrypted
+        // For global collaborative notes, use shared key
+        const key = await getGlobalEncryptionKey();
+        console.log('Using global encryption key for decryption...');
+        const decrypted = await decryptData(encryptedContent, key);
+        console.log('Decryption successful');
+        return decrypted;
+  
+    } catch (base64Error) {
+      // Not valid base64, so it's plain text
+      console.log('Content is not base64 encoded, returning as plain text');
       return encryptedContent;
     }
-    
-    // For global collaborative notes, use shared key
-    const key = await getGlobalEncryptionKey();
-    console.log('Using global encryption key for decryption...');
-    console.log('Key...', key);
-    const decrypted = await decryptData(encryptedContent, key);
-    console.log('Decryption successful');
-    return decrypted;
   } catch (error) {
     console.error('Error decrypting note content:', error);
     // Return original content if decryption fails
