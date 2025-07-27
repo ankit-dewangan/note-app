@@ -15,6 +15,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../../src/contexts/ThemeContext';
 import { versionService, NoteVersion, VersionComparison } from '../../../src/services/versionService';
 import { useSafeToast } from '../../../src/utils/toast';
+import { decryptNoteContent } from '../../../src/utils/encryption';
 
 export default function VersionHistoryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -28,6 +29,24 @@ export default function VersionHistoryScreen() {
   const { currentTheme } = useTheme();
   const { showError, showSuccess } = useSafeToast();
 
+  // Function to decrypt version content
+  const decryptVersionContent = async (versions: NoteVersion[]): Promise<NoteVersion[]> => {
+    return Promise.all(
+      versions.map(async (version) => {
+        try {
+          const decryptedContent = await decryptNoteContent(version.content);
+          return {
+            ...version,
+            content: decryptedContent,
+          };
+        } catch (error) {
+          console.error('Error decrypting version content:', error);
+          return version; // Return original if decryption fails
+        }
+      })
+    );
+  };
+
   useEffect(() => {
     if (id) {
       loadVersionHistory();
@@ -38,7 +57,10 @@ export default function VersionHistoryScreen() {
     try {
       setIsLoading(true);
       const versionHistory = await versionService.getVersionHistory(id);
-      setVersions(versionHistory);
+      
+      // Decrypt the version content
+      const decryptedVersions = await decryptVersionContent(versionHistory);
+      setVersions(decryptedVersions);
     } catch (error) {
       console.error('Error loading version history:', error);
       showError('Failed to load version history');
@@ -74,7 +96,28 @@ export default function VersionHistoryScreen() {
   const handleCompareVersions = async (version1: NoteVersion, version2: NoteVersion) => {
     try {
       const comparison = await versionService.compareVersions(id, version1.version, version2.version);
-      setComparison(comparison);
+      
+      // Ensure both versions are decrypted for comparison
+      const decryptedV1Title = await decryptNoteContent(comparison.version1.title);
+      const decryptedV1Content = await decryptNoteContent(comparison.version1.content);
+      const decryptedV2Title = await decryptNoteContent(comparison.version2.title);
+      const decryptedV2Content = await decryptNoteContent(comparison.version2.content);
+      
+      const decryptedComparison = {
+        ...comparison,
+        version1: {
+          ...comparison.version1,
+          title: comparison.version1.title,
+          content: decryptedV1Content,
+        },
+        version2: {
+          ...comparison.version2,
+          title: comparison.version2.title,
+          content: decryptedV2Content,
+        },
+      };
+      
+      setComparison(decryptedComparison);
       setShowComparison(true);
     } catch (error) {
       console.error('Error comparing versions:', error);
@@ -82,9 +125,23 @@ export default function VersionHistoryScreen() {
     }
   };
 
-  const handleViewVersion = (version: NoteVersion) => {
-    setSelectedVersion(version);
-    setShowVersionDetails(true);
+  const handleViewVersion = async (version: NoteVersion) => {
+    try {
+      // Ensure the version content is decrypted
+      const decryptedContent = await decryptNoteContent(version.content);
+      
+      const decryptedVersion = {
+        ...version,
+        content: decryptedContent,
+      };
+      
+      setSelectedVersion(decryptedVersion);
+      setShowVersionDetails(true);
+    } catch (error) {
+      console.error('Error decrypting version content:', error);
+      setSelectedVersion(version);
+      setShowVersionDetails(true);
+    }
   };
 
   const renderVersionItem = ({ item, index }: { item: NoteVersion; index: number }) => {
@@ -242,35 +299,87 @@ export default function VersionHistoryScreen() {
 
           {comparison && (
             <View style={styles.modalContent}>
-              <Text style={[styles.modalLabel, { color: currentTheme.colors.textSecondary }]}>Differences</Text>
-              <View style={styles.differencesList}>
-                {comparison.differences.title && (
-                  <Text style={[styles.differenceItem, { color: currentTheme.colors.warning }]}>• Title changed</Text>
-                )}
-                {comparison.differences.content && (
-                  <Text style={[styles.differenceItem, { color: currentTheme.colors.warning }]}>• Content changed</Text>
-                )}
-                {comparison.differences.tags && (
-                  <Text style={[styles.differenceItem, { color: currentTheme.colors.warning }]}>• Tags changed</Text>
-                )}
-                {comparison.differences.color && (
-                  <Text style={[styles.differenceItem, { color: currentTheme.colors.warning }]}>• Color changed</Text>
-                )}
+              {/* Side-by-side comparison */}
+              <View style={styles.comparisonContainer}>
+                <View style={styles.comparisonVersionColumn}>
+                  <View style={[styles.comparisonVersionHeader, { backgroundColor: currentTheme.colors.background }]}>
+                    <Text style={[styles.comparisonVersionLabel, { color: currentTheme.colors.primary }]}>
+                      Version {comparison.version1.version} (Previous)
+                    </Text>
+                    <Text style={[styles.comparisonVersionDate, { color: currentTheme.colors.textSecondary }]}>
+                      {new Date(comparison.version1.createdAt).toLocaleString()}
+                    </Text>
+                  </View>
+                  <View style={[styles.comparisonVersionContentContainer, { backgroundColor: currentTheme.colors.background }]}>
+                    <Text style={[styles.modalLabel, { color: currentTheme.colors.textSecondary }]}>Title</Text>
+                    <Text style={[styles.modalText, { color: currentTheme.colors.text }]}>
+                      {comparison.version1.title}
+                    </Text>
+                    
+                    <Text style={[styles.modalLabel, { color: currentTheme.colors.textSecondary }]}>Content</Text>
+                    <Text style={[styles.modalText, { color: currentTheme.colors.text }]}>
+                      {comparison.version1.content}
+                    </Text>
+                  </View>
+                </View>
+                
+                <View style={[styles.comparisonVersionDivider, { backgroundColor: currentTheme.colors.border }]} />
+                
+                <View style={styles.comparisonVersionColumn}>
+                  <View style={[styles.comparisonVersionHeader, { backgroundColor: currentTheme.colors.background }]}>
+                    <Text style={[styles.comparisonVersionLabel, { color: currentTheme.colors.primary }]}>
+                      Version {comparison.version2.version} (Current)
+                    </Text>
+                    <Text style={[styles.comparisonVersionDate, { color: currentTheme.colors.textSecondary }]}>
+                      {new Date(comparison.version2.createdAt).toLocaleString()}
+                    </Text>
+                  </View>
+                  <View style={[styles.comparisonVersionContentContainer, { backgroundColor: currentTheme.colors.background }]}>
+                    <Text style={[styles.modalLabel, { color: currentTheme.colors.textSecondary }]}>Title</Text>
+                    <Text style={[styles.modalText, { color: currentTheme.colors.text }]}>
+                      {comparison.version2.title}
+                    </Text>
+                    
+                    <Text style={[styles.modalLabel, { color: currentTheme.colors.textSecondary }]}>Content</Text>
+                    <Text style={[styles.modalText, { color: currentTheme.colors.text }]}>
+                      {comparison.version2.content}
+                    </Text>
+                  </View>
+                </View>
               </View>
 
-              <Text style={[styles.modalLabel, { color: currentTheme.colors.textSecondary }]}>Content Statistics</Text>
-              <Text style={[styles.modalText, { color: currentTheme.colors.text }]}>
-                Version 1: {comparison.contentDiff.length1} characters
-              </Text>
-              <Text style={[styles.modalText, { color: currentTheme.colors.text }]}>
-                Version 2: {comparison.contentDiff.length2} characters
-              </Text>
-              <Text style={[styles.modalText, { color: currentTheme.colors.success }]}>
-                Added: {comparison.contentDiff.added} characters
-              </Text>
-              <Text style={[styles.modalText, { color: currentTheme.colors.error }]}>
-                Removed: {comparison.contentDiff.removed} characters
-              </Text>
+              {/* Summary of changes */}
+              <View style={[styles.comparisonSummaryContainer, { backgroundColor: currentTheme.colors.background }]}>
+                <Text style={[styles.modalLabel, { color: currentTheme.colors.textSecondary }]}>Summary of Changes</Text>
+                <View style={styles.differencesList}>
+                  {comparison.differences.title && (
+                    <Text style={[styles.differenceItem, { color: currentTheme.colors.warning }]}>• Title changed</Text>
+                  )}
+                  {comparison.differences.content && (
+                    <Text style={[styles.differenceItem, { color: currentTheme.colors.warning }]}>• Content changed</Text>
+                  )}
+                  {comparison.differences.tags && (
+                    <Text style={[styles.differenceItem, { color: currentTheme.colors.warning }]}>• Tags changed</Text>
+                  )}
+                  {comparison.differences.color && (
+                    <Text style={[styles.differenceItem, { color: currentTheme.colors.warning }]}>• Color changed</Text>
+                  )}
+                </View>
+
+                <Text style={[styles.modalLabel, { color: currentTheme.colors.textSecondary }]}>Content Statistics</Text>
+                <Text style={[styles.modalText, { color: currentTheme.colors.text }]}>
+                  Previous: {comparison.contentDiff.length1} characters
+                </Text>
+                <Text style={[styles.modalText, { color: currentTheme.colors.text }]}>
+                  Current: {comparison.contentDiff.length2} characters
+                </Text>
+                <Text style={[styles.modalText, { color: currentTheme.colors.success }]}>
+                  Added: {comparison.contentDiff.added} characters
+                </Text>
+                <Text style={[styles.modalText, { color: currentTheme.colors.error }]}>
+                  Removed: {comparison.contentDiff.removed} characters
+                </Text>
+              </View>
             </View>
           )}
         </SafeAreaView>
@@ -413,5 +522,42 @@ const styles = StyleSheet.create({
   differenceItem: {
     fontSize: 14,
     marginBottom: 4,
+  },
+  // Comparison styles
+  comparisonContainer: {
+    flexDirection: 'row',
+    marginBottom: 20,
+  },
+  comparisonVersionColumn: {
+    flex: 1,
+    marginHorizontal: 4,
+  },
+  comparisonVersionHeader: {
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  comparisonVersionLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  comparisonVersionDate: {
+    fontSize: 12,
+  },
+  comparisonVersionContentContainer: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  comparisonVersionDivider: {
+    width: 2,
+    marginHorizontal: 8,
+  },
+  comparisonSummaryContainer: {
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 16,
   },
 }); 
